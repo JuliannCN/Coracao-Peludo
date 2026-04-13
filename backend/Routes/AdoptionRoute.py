@@ -1,111 +1,15 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request
-import os
-import logging
-from typing import Optional
+from fastapi import HTTPException, Request
 from datetime import datetime, timezone
-import jwt
-import requests
 from bson import ObjectId
 from Models import AdoptionModel
-from backend import database as db
-
-# JWT Configuration
-JWT_ALGORITHM = "HS256"
-
-def get_jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
-
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-        if payload.get("type") != "access":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-        user = await db.users.find_one({"_id": ObjectId(payload["sub"])}, {"password_hash": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        user["_id"] = str(user["_id"])
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-async def get_optional_user(request: Request) -> Optional[dict]:
-    try:
-        return await get_current_user(request)
-    except:
-        return None
-
-# Create the main app
-app = FastAPI(title="Corações Peludos API")
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Object Storage Configuration
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = "coracoes-peludos"
-storage_key = None
-
-def init_storage():
-    """Initialize storage once at startup"""
-    global storage_key
-    if storage_key:
-        return storage_key
-    try:
-        resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-        resp.raise_for_status()
-        storage_key = resp.json()["storage_key"]
-        return storage_key
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
-        return None
-
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    """Upload file to storage"""
-    key = init_storage()
-    if not key:
-        raise HTTPException(status_code=500, detail="Storage not initialized")
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-def get_object(path: str) -> tuple:
-    """Download file from storage"""
-    key = init_storage()
-    if not key:
-        raise HTTPException(status_code=500, detail="Storage not initialized")
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+import database as db
+import server as sv
 
 # ======================= ADOPTION ROUTES =======================
 
-@api_router.post("/adoptions")
+@sv.api_router.post("/adoptions")
 async def create_adoption_request(data: AdoptionModel, request: Request):
-    user = await get_current_user(request)
+    user = await sv.get_current_user(request)
     
     pet = await db.pets.find_one({"_id": ObjectId(data.pet_id)})
     if not pet:
@@ -150,9 +54,9 @@ async def create_adoption_request(data: AdoptionModel, request: Request):
     
     return {"id": str(result.inserted_id), "message": "Adoption request sent"}
 
-@api_router.get("/adoptions/user")
+@sv.api_router.get("/adoptions/user")
 async def get_user_adoptions(request: Request):
-    user = await get_current_user(request)
+    user = await sv.get_current_user(request)
     adoptions = await db.adoptions.find({"user_id": user["_id"]}).sort("created_at", -1).to_list(100)
     
     result = []
@@ -167,9 +71,9 @@ async def get_user_adoptions(request: Request):
     
     return result
 
-@api_router.get("/adoptions/ong")
+@sv.api_router.get("/adoptions/ong")
 async def get_ong_adoptions(request: Request):
-    user = await get_current_user(request)
+    user = await sv.get_current_user(request)
     if user["user_type"] not in ["ong", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -187,9 +91,9 @@ async def get_ong_adoptions(request: Request):
     
     return result
 
-@api_router.put("/adoptions/{adoption_id}")
+@sv.api_router.put("/adoptions/{adoption_id}")
 async def update_adoption_status(adoption_id: str, request: Request):
-    user = await get_current_user(request)
+    user = await sv.get_current_user(request)
     body = await request.json()
     status = body.get("status")
     

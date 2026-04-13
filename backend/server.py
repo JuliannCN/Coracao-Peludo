@@ -12,8 +12,8 @@ from typing import Optional
 from datetime import datetime, timezone, timedelta
 import backend as db
 import bcrypt
-import jwt
 import requests
+import jwt
 from bson import ObjectId
 
 # ======================= CONFIG =======================

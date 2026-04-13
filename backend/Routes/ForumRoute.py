@@ -1,111 +1,16 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request
-import os
-import logging
+from fastapi import HTTPException, Request
 from typing import Optional
 from datetime import datetime, timezone
-import jwt
-import requests
 from bson import ObjectId
 from Models import ForumModel, CommentModel
-from backend import database as db
-
-# JWT Configuration
-JWT_ALGORITHM = "HS256"
-
-def get_jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
-
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-        if payload.get("type") != "access":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-        user = await db.users.find_one({"_id": ObjectId(payload["sub"])}, {"password_hash": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        user["_id"] = str(user["_id"])
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-async def get_optional_user(request: Request) -> Optional[dict]:
-    try:
-        return await get_current_user(request)
-    except:
-        return None
-
-# Create the main app
-app = FastAPI(title="Corações Peludos API")
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Object Storage Configuration
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = "coracoes-peludos"
-storage_key = None
-
-def init_storage():
-    """Initialize storage once at startup"""
-    global storage_key
-    if storage_key:
-        return storage_key
-    try:
-        resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-        resp.raise_for_status()
-        storage_key = resp.json()["storage_key"]
-        return storage_key
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
-        return None
-
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    """Upload file to storage"""
-    key = init_storage()
-    if not key:
-        raise HTTPException(status_code=500, detail="Storage not initialized")
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-def get_object(path: str) -> tuple:
-    """Download file from storage"""
-    key = init_storage()
-    if not key:
-        raise HTTPException(status_code=500, detail="Storage not initialized")
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+import database as db
+import server as sv
 
 # ======================= FORUM ROUTES =======================
 
-@api_router.post("/forum/posts")
+@sv.api_router.post("/forum/posts")
 async def create_forum_post(data: ForumModel, request: Request):
-    user = await get_current_user(request)
+    user = await sv.get_current_user(request)
     
     post_doc = {
         "title": data.title,
@@ -122,7 +27,7 @@ async def create_forum_post(data: ForumModel, request: Request):
     result = await db.forum_posts.insert_one(post_doc)
     return {"id": str(result.inserted_id), "message": "Post created"}
 
-@api_router.get("/forum/posts")
+@sv.api_router.get("/forum/posts")
 async def list_forum_posts(
     category: Optional[str] = None,
     search: Optional[str] = None,
@@ -158,7 +63,7 @@ async def list_forum_posts(
         "pages": (total + limit - 1) // limit
     }
 
-@api_router.get("/forum/posts/{post_id}")
+@sv.api_router.get("/forum/posts/{post_id}")
 async def get_forum_post(post_id: str, request: Request):
     try:
         post = await db.forum_posts.find_one({"_id": ObjectId(post_id)})
@@ -174,7 +79,7 @@ async def get_forum_post(post_id: str, request: Request):
     
     # Check if current user liked
     try:
-        user = await get_optional_user(request)
+        user = await sv.get_optional_user(request)
         post["user_liked"] = user["_id"] in post.get("likes", []) if user else False
     except:
         post["user_liked"] = False
@@ -191,9 +96,9 @@ async def get_forum_post(post_id: str, request: Request):
     
     return post
 
-@api_router.post("/forum/posts/{post_id}/comments")
+@sv.api_router.post("/forum/posts/{post_id}/comments")
 async def create_comment(post_id: str, data: CommentModel, request: Request):
-    user = await get_current_user(request)
+    user = await sv.get_current_user(request)
     
     post = await db.forum_posts.find_one({"_id": ObjectId(post_id)})
     if not post:
@@ -230,9 +135,9 @@ async def create_comment(post_id: str, data: CommentModel, request: Request):
     
     return {"id": str(result.inserted_id), "message": "Comment added"}
 
-@api_router.post("/forum/posts/{post_id}/like")
+@sv.api_router.post("/forum/posts/{post_id}/like")
 async def like_post(post_id: str, request: Request):
-    user = await get_current_user(request)
+    user = await sv.get_current_user(request)
     
     post = await db.forum_posts.find_one({"_id": ObjectId(post_id)})
     if not post:
