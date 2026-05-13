@@ -1,6 +1,6 @@
 # Corações Peludos
 
-Plataforma web para **adoção responsável de animais**, conectando usuários e ONGs, além de oferecer um espaço de **fórum para troca de experiências, dicas e curiosidades**.
+Plataforma web para **adoção responsável de animais** , conectando usuários e ONGs, além de oferecer um espaço de **fórum para troca de experiências, dicas e curiosidades**.
 
 > Status do projeto: Em desenvolvimento (não totalmente funcional)
 
@@ -81,19 +81,6 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
----
-
-### 4. Configure o arquivo `.env`
-
-Crie um arquivo `.env` na raiz do backend:
-
-```env
-MONGO_URI=sua_string_do_mongo
-JWT_SECRET=sua_chave_secreta
-```
-
----
-
 ### 5. Execute o backend
 
 ```bash
@@ -125,12 +112,12 @@ Ou utilize uma extensão como **Live Server** no VS Code.
 * [x] Estrutura base do backend
 * [x] Conexão com MongoDB
 * [x] Sistema de autenticação (JWT)
-* [ ] Cadastro e login de usuários
-* [ ] Cadastro de pets por ONGs
-* [ ] Sistema de adoção
-* [ ] Fórum com postagens e comentários
-* [ ] Favoritos
-* [ ] Chat entre usuário e ONG
+* [x] Cadastro e login de usuários
+* [x] Cadastro de pets por ONGs
+* [x] Sistema de adoção
+* [x] Fórum com postagens e comentários
+* [x] Favoritos
+* [x] Chat entre usuário e ONG
 
 ---
 
